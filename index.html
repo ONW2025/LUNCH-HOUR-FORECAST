@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ohio 12pm Temperatures</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Overpass:wght@900&display=swap');
+
+    /* Use the imported font for everything */
+    * {
+      font-family: 'Overpass Black', sans-serif !important;
+    }
+
+    /* Remove the background image from body; use a dark background */
+    body {
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+    }
+
+    /* Fixed base container (1920x1080) that will be scaled to 70vw */
+    #map-container {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      margin: 0 auto;
+      transform: scale(calc(70vw / 1920));
+      transform-origin: top center;
+    }
+
+    /* The background image fills the container */
+    #map-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* An overlay that sits on top of the map image */
+    /* Note: Removed pointer-events: none so html2canvas captures its children */
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: auto;
+    }
+
+    /* ===== Box Styles (unchanged from your original) ===== */
+    .temp-box {
+      position: absolute;
+      width: 150px;
+      height: 100px;
+      line-height: 50px;
+      text-align: center;
+      font-family: Arial, sans-serif;
+      font-size: 48px;
+      color: #ffff00;
+      text-shadow: 0 0 20px #000, 0 0 20px #000, 0 0 20px #000;
+      background-color: transparent;
+      border: 0;
+      cursor: move;
+      user-select: none;
+      pointer-events: auto;
+    }
+    .temp-box:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 2px 5px;
+      white-space: nowrap;
+      font-size: 12px;
+      border-radius: 3px;
+      pointer-events: none;
+      margin-bottom: 5px;
+    }
+
+    .custom-text-box {
+      position: absolute;
+      width: 900px;
+      height: 80px;
+      line-height: 64px;
+      text-align: left;
+      font-family: Arial, sans-serif;
+      font-size: 64px;
+      color: #ffffff;
+      text-shadow: 0 0 5px #000;
+      background-color: rgba(0, 0, 0, 0);
+      border: 0px solid #fff;
+      cursor: move;
+      user-select: none;
+      pointer-events: auto;
+    }
+    .custom-text-box:hover::after {
+      content: "Click to update text";
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 2px 5px;
+      white-space: nowrap;
+      font-size: 12px;
+      border-radius: 3px;
+      pointer-events: none;
+      margin-bottom: 5px;
+    }
+
+    .date-stamp {
+      position: absolute;
+      width: 900px;
+      height: 80px;
+      line-height: 80px;
+      text-align: left;
+      padding: 10px;
+      box-sizing: border-box;
+      font-family: Overpass Black, sans-serif;
+      font-size: 32px;
+      color: #ffffff;
+      text-shadow: 0 0 5px #000;
+      background-color: transparent;
+      border: 0;
+      cursor: move;
+      user-select: none;
+      text-transform: uppercase;
+      pointer-events: auto;
+    }
+    .date-stamp:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 2px 5px;
+      white-space: nowrap;
+      font-size: 12px;
+      border-radius: 3px;
+      pointer-events: none;
+      margin-bottom: 5px;
+    }
+    .date-stamp button {
+      font-size: 24px;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      color: inherit;
+      padding: 4px 8px;
+      transition: opacity 0.3s ease, background-color 0.3s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .date-stamp:hover button {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .date-stamp button:hover {
+      background-color: rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+    }
+
+    .timestamp {
+      position: absolute;
+      width: 400px;
+      height: 60px;
+      line-height: 60px;
+      text-align: left;
+      padding: 10px;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+      font-size: 24px;
+      color: #ffffff;
+      text-shadow: 0 0 5px #000, 0 0 5px #000, 0 0 5px #000;
+      background-color: transparent;
+      border: 0;
+      cursor: move;
+      user-select: none;
+      pointer-events: auto;
+    }
+    .timestamp:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 2px 5px;
+      white-space: nowrap;
+      font-size: 12px;
+      border-radius: 3px;
+      pointer-events: none;
+      margin-bottom: 5px;
+    }
+
+    /* Save Button (always visible, outside the scaled container) */
+    #saveButton {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 9999;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #fff;
+      border: 2px solid #000;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Save Button -->
+  <button id="saveButton">Save Image</button>
+
+  <!-- The map container is our fixed 1920x1080 base layout scaled to 70vw -->
+  <div id="map-container">
+    <img id="map-image" src="background.png" alt="Map Background">
+    <div id="overlay">
+      <!-- Temperature Boxes -->
+      <div id="toledo" class="temp-box" style="top: 288px; left: 175px;"></div>
+      <div id="cleveland" class="temp-box" style="top: 326px; left: 510px;"></div>
+      <div id="lima" class="temp-box" style="top: 481px; left: 89px;"></div>
+      <div id="mansfield" class="temp-box" style="top: 477px; left: 365px;"></div>
+      <div id="canton" class="temp-box" style="top: 470px; left: 590px;"></div>
+      <div id="dayton" class="temp-box" style="top: 688px; left: 65px;"></div>
+      <div id="columbus" class="temp-box" style="top: 649px; left: 290px;"></div>
+      <div id="zanesville" class="temp-box" style="top: 652px; left: 493px;"></div>
+      <div id="cincinnati" class="temp-box" style="top: 816px; left: 20px;"></div>
+      <div id="chillicothe" class="temp-box" style="top: 793px; left: 290px;"></div>
+      <div id="gallipolis" class="temp-box" style="top: 899px; left: 410px;"></div>
+      <div id="marietta" class="temp-box" style="top: 761px; left: 555px;"></div>
+
+      <!-- Custom Text Boxes -->
+      <div id="textbox1" class="custom-text-box" style="top: 345px; left: 930px;">UPDATE ME</div>
+      <div id="textbox2" class="custom-text-box" style="top: 545px; left: 930px;">PLEASE!!</div>
+      <div id="textbox3" class="custom-text-box" style="top: 740px; left: 930px;">OR BE EMBARRASSED</div>
+
+      <!-- Date Stamp -->
+      <div id="datestamp" class="date-stamp" style="top: 60px; left: 275px;">
+        <button id="prevDate">&larr;</button>
+        <span id="dateText" style="margin: 0 10px;"></span>
+        <button id="nextDate">&rarr;</button>
+      </div>
+
+      <!-- Created Timestamp -->
+      <div id="timestamp" class="timestamp" style="top: 995px; left: 1525px;"></div>
+    </div>
+  </div>
+
+  <script>
+    /* ========= DRAG & DROP FUNCTIONALITY ========= */
+    let dragItem = null, offsetX = 0, offsetY = 0, isDragging = false, dragStartX = 0, dragStartY = 0;
+    function dragStart(e) {
+      dragItem = e.target;
+      isDragging = false;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      offsetX = e.clientX - dragItem.offsetLeft;
+      offsetY = e.clientY - dragItem.offsetTop;
+      document.addEventListener('mousemove', drag);
+      document.addEventListener('mouseup', dragEnd);
+      e.preventDefault();
+    }
+    function drag(e) {
+      if (dragItem) {
+        const newLeft = e.clientX - offsetX;
+        const newTop = e.clientY - offsetY;
+        if (!isDragging && (Math.abs(e.clientX - dragStartX) > 5 || Math.abs(e.clientY - dragStartY) > 5)) {
+          isDragging = true;
+        }
+        dragItem.style.left = newLeft + 'px';
+        dragItem.style.top = newTop + 'px';
+        const width = parseFloat(getComputedStyle(dragItem).width);
+        const leftFromCenter = newLeft + width / 2;
+        dragItem.setAttribute('data-tooltip', `Top: ${newTop}px, Left (from center): ${leftFromCenter}px`);
+      }
+    }
+    function dragEnd() {
+      document.removeEventListener('mousemove', drag);
+      document.removeEventListener('mouseup', dragEnd);
+      setTimeout(() => { isDragging = false; }, 0);
+      dragItem = null;
+    }
+    document.querySelectorAll('.temp-box, .custom-text-box, .date-stamp, .timestamp').forEach(box => {
+      box.addEventListener('mousedown', dragStart);
+    });
+
+    /* ===== Custom Text Boxes: click to update text ===== */
+    document.querySelectorAll('.custom-text-box').forEach(box => {
+      box.addEventListener('click', function(e) {
+        if (!isDragging) {
+          let newText = prompt("Enter new text:", box.textContent);
+          if (newText !== null) {
+            box.textContent = newText;
+          }
+        }
+      });
+    });
+
+    /* ===== Temperature Boxes: click to update temperature ===== */
+    document.querySelectorAll('.temp-box').forEach(box => {
+      box.addEventListener('click', function(e) {
+        if (!isDragging) {
+          let newTemp = prompt("Enter new temperature:", box.textContent);
+          if (newTemp !== null) {
+            box.textContent = newTemp;
+          }
+        }
+      });
+    });
+
+    /* ========= DATE STAMP FUNCTIONALITY ========= */
+    function getOrdinalSuffix(n) {
+      if (n >= 11 && n <= 13) return "th";
+      switch (n % 10) {
+        case 1: return "st";
+        case 2: return "nd";
+        case 3: return "rd";
+        default: return "th";
+      }
+    }
+    function formatDate(date) {
+      const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const dayOfWeek = days[date.getDay()];
+      const month = months[date.getMonth()];
+      const day = date.getDate();
+      const suffix = getOrdinalSuffix(day);
+      const year = date.getFullYear();
+      return `${dayOfWeek}, ${month} ${day}${suffix}, ${year}`;
+    }
+    let currentDate = new Date();
+    function updateDateStamp() {
+      document.getElementById("dateText").textContent = formatDate(currentDate);
+    }
+    updateDateStamp();
+    document.getElementById("prevDate").addEventListener("click", function(e) {
+      currentDate.setDate(currentDate.getDate() - 1);
+      updateDateStamp();
+    });
+    document.getElementById("nextDate").addEventListener("click", function(e) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      updateDateStamp();
+    });
+
+    /* ========= CREATED TIMESTAMP FUNCTIONALITY ========= */
+    function updateTimestamp() {
+      const now = new Date();
+      let hours = now.getHours();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+      let minutes = now.getMinutes();
+      minutes = minutes < 10 ? "0" + minutes : minutes;
+      let month = now.getMonth() + 1;
+      month = month < 10 ? "0" + month : month;
+      let day = now.getDate();
+      day = day < 10 ? "0" + day : day;
+      let year = now.getFullYear() % 100;
+      year = year < 10 ? "0" + year : year;
+      const timestampString = `${hours}:${minutes} ${ampm} ${month}/${day}/${year}`;
+      document.getElementById("timestamp").textContent = "CREATED: " + timestampString;
+    }
+    updateTimestamp();
+    setInterval(updateTimestamp, 60000);
+
+    /* ========= TEMPERATURE DATA FETCHING (via NWS API) ========= */
+    const cities = [
+      { name: 'Toledo',      id: 'toledo',      lat: 41.6639, lon: -83.5552 },
+      { name: 'Cleveland',   id: 'cleveland',   lat: 41.4993, lon: -81.6944 },
+      { name: 'Lima',        id: 'lima',        lat: 40.7420, lon: -84.1050 },
+      { name: 'Mansfield',   id: 'mansfield',   lat: 40.7584, lon: -82.5154 },
+      { name: 'Canton',      id: 'canton',      lat: 40.7989, lon: -81.3785 },
+      { name: 'Dayton',      id: 'dayton',      lat: 39.7589, lon: -84.1916 },
+      { name: 'Columbus',    id: 'columbus',    lat: 39.9612, lon: -82.9988 },
+      { name: 'Zanesville',  id: 'zanesville',  lat: 39.9400, lon: -82.0132 },
+      { name: 'Cincinnati',  id: 'cincinnati',  lat: 39.1031, lon: -84.5120 },
+      { name: 'Chillicothe', id: 'chillicothe', lat: 39.3334, lon: -82.9831 },
+      { name: 'Gallipolis',  id: 'gallipolis',  lat: 38.8356, lon: -82.2283 },
+      { name: 'Marietta',    id: 'marietta',    lat: 39.4150, lon: -81.5302 }
+    ];
+    async function fetchTemperature(city) {
+      try {
+        const pointsResponse = await fetch(`https://api.weather.gov/points/${city.lat},${city.lon}`);
+        if (!pointsResponse.ok) throw new Error(`Error fetching point data for ${city.name}`);
+        const pointsData = await pointsResponse.json();
+        const forecastHourlyUrl = pointsData.properties.forecastHourly;
+        const forecastResponse = await fetch(forecastHourlyUrl);
+        if (!forecastResponse.ok) throw new Error(`Error fetching forecast data for ${city.name}`);
+        const forecastData = await forecastResponse.json();
+        const now = new Date();
+        let targetPeriod = null;
+        for (let period of forecastData.properties.periods) {
+          const periodTime = new Date(period.startTime);
+          if (periodTime.getHours() === 12 && periodTime >= now) {
+            targetPeriod = period;
+            break;
+          }
+        }
+        if (!targetPeriod) {
+          targetPeriod = forecastData.properties.periods.find(p => new Date(p.startTime).getHours() === 12);
+        }
+        const tempBox = document.getElementById(city.id);
+        tempBox.textContent = targetPeriod ? targetPeriod.temperature : 'No data';
+      } catch (error) {
+        console.error(error);
+        document.getElementById(city.id).textContent = 'Error loading data';
+      }
+    }
+    cities.forEach(city => fetchTemperature(city));
+
+    /* ========= TOOLTIP SETUP ========= */
+    function setTooltips() {
+      const boxes = document.querySelectorAll('.temp-box, .custom-text-box, .date-stamp, .timestamp');
+      boxes.forEach(box => {
+        const style = getComputedStyle(box);
+        const top = parseFloat(style.top);
+        const left = parseFloat(style.left);
+        const width = parseFloat(style.width);
+        const leftFromCenter = left + width / 2;
+        box.setAttribute('data-tooltip', `Top: ${top}px, Left (from center): ${leftFromCenter}px`);
+      });
+    }
+    window.addEventListener('load', setTooltips);
+
+    /* ========= DRAG & DROP FUNCTIONALITY ========= */
+    let dragItemLocal = null, offsetXLocal = 0, offsetYLocal = 0, isDraggingLocal = false, dragStartXLocal = 0, dragStartYLocal = 0;
+    function dragStartLocal(e) {
+      dragItemLocal = e.target;
+      isDraggingLocal = false;
+      dragStartXLocal = e.clientX;
+      dragStartYLocal = e.clientY;
+      offsetXLocal = e.clientX - dragItemLocal.offsetLeft;
+      offsetYLocal = e.clientY - dragItemLocal.offsetTop;
+      document.addEventListener('mousemove', dragLocal);
+      document.addEventListener('mouseup', dragEndLocal);
+      e.preventDefault();
+    }
+    function dragLocal(e) {
+      if (dragItemLocal) {
+        const newLeft = e.clientX - offsetXLocal;
+        const newTop = e.clientY - offsetYLocal;
+        if (!isDraggingLocal && (Math.abs(e.clientX - dragStartXLocal) > 5 || Math.abs(e.clientY - dragStartYLocal) > 5)) {
+          isDraggingLocal = true;
+        }
+        dragItemLocal.style.left = newLeft + 'px';
+        dragItemLocal.style.top = newTop + 'px';
+        const width = parseFloat(getComputedStyle(dragItemLocal).width);
+        const leftFromCenter = newLeft + width / 2;
+        dragItemLocal.setAttribute('data-tooltip', `Top: ${newTop}px, Left (from center): ${leftFromCenter}px`);
+      }
+    }
+    function dragEndLocal() {
+      document.removeEventListener('mousemove', dragLocal);
+      document.removeEventListener('mouseup', dragEndLocal);
+      setTimeout(() => { isDraggingLocal = false; }, 0);
+      dragItemLocal = null;
+    }
+    document.querySelectorAll('.temp-box, .custom-text-box, .date-stamp, .timestamp').forEach(box => {
+      box.addEventListener('mousedown', dragStartLocal);
+    });
+
+    /* ========= CUSTOM TEXT BOXES: Click to update text ========= */
+    document.querySelectorAll('.custom-text-box').forEach(box => {
+      box.addEventListener('click', function(e) {
+        if (!isDraggingLocal) {
+          let newText = prompt("Enter new text:", box.textContent);
+          if (newText !== null) {
+            box.textContent = newText;
+          }
+        }
+      });
+    });
+
+    /* ========= TEMPERATURE BOXES: Click to update temperature ========= */
+    document.querySelectorAll('.temp-box').forEach(box => {
+      box.addEventListener('click', function(e) {
+        if (!isDraggingLocal) {
+          let newTemp = prompt("Enter new temperature:", box.textContent);
+          if (newTemp !== null) {
+            box.textContent = newTemp;
+          }
+        }
+      });
+    });
+
+    /* ========= DATE STAMP FUNCTIONALITY ========= */
+    function getOrdinalSuffix(n) {
+      if (n >= 11 && n <= 13) return "th";
+      switch (n % 10) {
+        case 1: return "st";
+        case 2: return "nd";
+        case 3: return "rd";
+        default: return "th";
+      }
+    }
+    function formatDate(date) {
+      const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const dayOfWeek = days[date.getDay()];
+      const month = months[date.getMonth()];
+      const day = date.getDate();
+      const suffix = getOrdinalSuffix(day);
+      const year = date.getFullYear();
+      return `${dayOfWeek}, ${month} ${day}${suffix}, ${year}`;
+    }
+    let currentDate = new Date();
+    function updateDateStamp() {
+      document.getElementById("dateText").textContent = formatDate(currentDate);
+    }
+    updateDateStamp();
+    document.getElementById("prevDate").addEventListener("click", function(e) {
+      currentDate.setDate(currentDate.getDate() - 1);
+      updateDateStamp();
+    });
+    document.getElementById("nextDate").addEventListener("click", function(e) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      updateDateStamp();
+    });
+
+    /* ========= CREATED TIMESTAMP FUNCTIONALITY ========= */
+    function updateTimestamp() {
+      const now = new Date();
+      let hours = now.getHours();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12;
+      if (hours === 0) hours = 12;
+      let minutes = now.getMinutes();
+      minutes = minutes < 10 ? "0" + minutes : minutes;
+      let month = now.getMonth() + 1;
+      month = month < 10 ? "0" + month : month;
+      let day = now.getDate();
+      day = day < 10 ? "0" + day : day;
+      let year = now.getFullYear() % 100;
+      year = year < 10 ? "0" + year : year;
+      const timestampString = `${hours}:${minutes} ${ampm} ${month}/${day}/${year}`;
+      document.getElementById("timestamp").textContent = "CREATED: " + timestampString;
+    }
+    updateTimestamp();
+    setInterval(updateTimestamp, 60000);
+
+    /* ========= TEMPERATURE DATA FETCHING (via NWS API) ========= */
+    const cities = [
+      { name: 'Toledo',      id: 'toledo',      lat: 41.6639, lon: -83.5552 },
+      { name: 'Cleveland',   id: 'cleveland',   lat: 41.4993, lon: -81.6944 },
+      { name: 'Lima',        id: 'lima',        lat: 40.7420, lon: -84.1050 },
+      { name: 'Mansfield',   id: 'mansfield',   lat: 40.7584, lon: -82.5154 },
+      { name: 'Canton',      id: 'canton',      lat: 40.7989, lon: -81.3785 },
+      { name: 'Dayton',      id: 'dayton',      lat: 39.7589, lon: -84.1916 },
+      { name: 'Columbus',    id: 'columbus',    lat: 39.9612, lon: -82.9988 },
+      { name: 'Zanesville',  id: 'zanesville',  lat: 39.9400, lon: -82.0132 },
+      { name: 'Cincinnati',  id: 'cincinnati',  lat: 39.1031, lon: -84.5120 },
+      { name: 'Chillicothe', id: 'chillicothe', lat: 39.3334, lon: -82.9831 },
+      { name: 'Gallipolis',  id: 'gallipolis',  lat: 38.8356, lon: -82.2283 },
+      { name: 'Marietta',    id: 'marietta',    lat: 39.4150, lon: -81.5302 }
+    ];
+    async function fetchTemperature(city) {
+      try {
+        const pointsResponse = await fetch(`https://api.weather.gov/points/${city.lat},${city.lon}`);
+        if (!pointsResponse.ok) throw new Error(`Error fetching point data for ${city.name}`);
+        const pointsData = await pointsResponse.json();
+        const forecastHourlyUrl = pointsData.properties.forecastHourly;
+        const forecastResponse = await fetch(forecastHourlyUrl);
+        if (!forecastResponse.ok) throw new Error(`Error fetching forecast data for ${city.name}`);
+        const forecastData = await forecastResponse.json();
+        const now = new Date();
+        let targetPeriod = null;
+        for (let period of forecastData.properties.periods) {
+          const periodTime = new Date(period.startTime);
+          if (periodTime.getHours() === 12 && periodTime >= now) {
+            targetPeriod = period;
+            break;
+          }
+        }
+        if (!targetPeriod) {
+          targetPeriod = forecastData.properties.periods.find(p => new Date(p.startTime).getHours() === 12);
+        }
+        const tempBox = document.getElementById(city.id);
+        tempBox.textContent = targetPeriod ? targetPeriod.temperature : 'No data';
+      } catch (error) {
+        console.error(error);
+        document.getElementById(city.id).textContent = 'Error loading data';
+      }
+    }
+    cities.forEach(city => fetchTemperature(city));
+
+    /* ========= TOOLTIP SETUP ========= */
+    function setTooltips() {
+      const boxes = document.querySelectorAll('.temp-box, .custom-text-box, .date-stamp, .timestamp');
+      boxes.forEach(box => {
+        const style = getComputedStyle(box);
+        const top = parseFloat(style.top);
+        const left = parseFloat(style.left);
+        const width = parseFloat(style.width);
+        const leftFromCenter = left + width / 2;
+        box.setAttribute('data-tooltip', `Top: ${top}px, Left (from center): ${leftFromCenter}px`);
+      });
+    }
+    window.addEventListener('load', setTooltips);
+
+    /* ========= DRAG & DROP FUNCTIONALITY ========= */
+    let dragItemLocal = null, offsetXLocal = 0, offsetYLocal = 0, isDraggingLocal = false, dragStartXLocal = 0, dragStartYLocal = 0;
+    function dragStartLocal(e) {
+      dragItemLocal = e.target;
+      isDraggingLocal = false;
+      dragStartXLocal = e.clientX;
+      dragStartYLocal = e.clientY;
+      offsetXLocal = e.clientX - dragItemLocal.offsetLeft;
+      offsetYLocal = e.clientY - dragItemLocal.offsetTop;
+      document.addEventListener('mousemove', dragLocal);
+      document.addEventListener('mouseup', dragEndLocal);
+      e.preventDefault();
+    }
+    function dragLocal(e) {
+      if (dragItemLocal) {
+        const newLeft = e.clientX - offsetXLocal;
+        const newTop = e.clientY - offsetYLocal;
+        if (!isDraggingLocal && (Math.abs(e.clientX - dragStartXLocal) > 5 || Math.abs(e.clientY - dragStartYLocal) > 5)) {
+          isDraggingLocal = true;
+        }
+        dragItemLocal.style.left = newLeft + 'px';
+        dragItemLocal.style.top = newTop + 'px';
+        const width = parseFloat(getComputedStyle(dragItemLocal).width);
+        const leftFromCenter = newLeft + width / 2;
+        dragItemLocal.setAttribute('data-tooltip', `Top: ${newTop}px, Left (from center): ${leftFromCenter}px`);
+      }
+    }
+    function dragEndLocal() {
+      document.removeEventListener('mousemove', dragLocal);
+      document.removeEventListener('mouseup', dragEndLocal);
+      setTimeout(() => { isDraggingLocal = false; }, 0);
+      dragItemLocal = null;
+    }
+    document.querySelectorAll('.temp-box, .custom-text-box, .date-stamp, .timestamp').forEach(box => {
+      box.addEventListener('mousedown', dragStartLocal);
+    });
+
+    /* ========= CUSTOM TEXT BOXES: Click to update text ========= */
+    document.querySelectorAll('.custom-text-box').forEach(box => {
+      box.addEventListener('click', function(e) {
+        if (!isDraggingLocal) {
+          let newText = prompt("Enter new text:", box.textContent);
+          if (newText !== null) {
+            box.textContent = newText;
+          }
+        }
+      });
+    });
+
+    /* ========= TEMPERATURE BOXES: Click to update temperature ========= */
+    document.querySelectorAll('.temp-box').forEach(box => {
+      box.addEventListener('click', function(e) {
+        if (!isDraggingLocal) {
+          let newTemp = prompt("Enter new temperature:", box.textContent);
+          if (newTemp !== null) {
+            box.textContent = newTemp;
+          }
+        }
+      });
+    });
+
+    /* ========= SAVE IMAGE FUNCTIONALITY ========= */
+    // Right-click on the map container to show a popup of the captured composite image
+    document.getElementById('map-container').addEventListener('contextmenu', function(e) {
+      e.preventDefault();
+      html2canvas(document.getElementById('map-container')).then(function(canvas) {
+        const dataURL = canvas.toDataURL("image/png");
+        // Create a popup overlay to display the image
+        const overlayDiv = document.createElement('div');
+        overlayDiv.id = "imageOverlay";
+        overlayDiv.style.position = "fixed";
+        overlayDiv.style.top = "0";
+        overlayDiv.style.left = "0";
+        overlayDiv.style.width = "100%";
+        overlayDiv.style.height = "100%";
+        overlayDiv.style.backgroundColor = "rgba(0,0,0,0.85)";
+        overlayDiv.style.display = "flex";
+        overlayDiv.style.alignItems = "center";
+        overlayDiv.style.justifyContent = "center";
+        overlayDiv.style.zIndex = "10000";
+        const img = document.createElement('img');
+        img.src = dataURL;
+        img.style.maxWidth = "90%";
+        img.style.maxHeight = "90%";
+        img.style.border = "5px solid #fff";
+        img.style.boxShadow = "0 0 10px #000";
+        overlayDiv.appendChild(img);
+        overlayDiv.addEventListener('click', function() {
+          document.body.removeChild(overlayDiv);
+        });
+        document.body.appendChild(overlayDiv);
+      }).catch(function(error) {
+        console.error("Error capturing image:", error);
+      });
+    });
+
+    // Save image via the Save Image button
+    document.getElementById('saveButton').addEventListener('click', function() {
+      html2canvas(document.getElementById('map-container')).then(function(canvas) {
+        const dataURL = canvas.toDataURL("image/png");
+        const link = document.createElement('a');
+        link.href = dataURL;
+        link.download = "weather_composite.png";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }).catch(function(error) {
+        console.error("Error capturing image:", error);
+      });
+    });
+  </script>
+</body>
+</html>
